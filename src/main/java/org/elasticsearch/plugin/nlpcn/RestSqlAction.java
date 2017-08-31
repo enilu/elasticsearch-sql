@@ -1,54 +1,71 @@
 package org.elasticsearch.plugin.nlpcn;
 
-import org.elasticsearch.action.ActionRequest;
-import org.elasticsearch.action.ActionRequestBuilder;
-import org.elasticsearch.action.search.SearchRequest;
-import org.elasticsearch.action.search.SearchRequestBuilder;
-import org.elasticsearch.action.search.SearchResponse;
-import org.elasticsearch.client.Client;
-import org.elasticsearch.common.inject.Inject;
-import org.elasticsearch.common.io.stream.BytesStreamOutput;
-import org.elasticsearch.common.io.stream.StreamOutput;
+import org.elasticsearch.client.node.NodeClient;
 import org.elasticsearch.common.settings.Settings;
+import org.elasticsearch.plugin.nlpcn.executors.ActionRequestRestExecuterFactory;
+import org.elasticsearch.plugin.nlpcn.executors.RestExecutor;
 import org.elasticsearch.rest.*;
-import org.elasticsearch.rest.action.support.RestBuilderListener;
-import org.elasticsearch.rest.action.support.RestStatusToXContentListener;
 import org.nlpcn.es4sql.SearchDao;
-import org.nlpcn.es4sql.query.explain.ExplainManager;
+import org.nlpcn.es4sql.exception.SqlParseException;
+import org.nlpcn.es4sql.query.QueryAction;
 
-import java.io.FileOutputStream;
+import java.io.IOException;
+import java.sql.SQLFeatureNotSupportedException;
+import java.util.Arrays;
+import java.util.HashMap;
+import java.util.List;
+import java.util.Map;
+
 
 public class RestSqlAction extends BaseRestHandler {
 
-	@Inject
-	public RestSqlAction(Settings settings, Client client, RestController restController) {
-		super(settings, restController, client);
+//    public static final RestSqlAction INSTANCE = new RestSqlAction();
+
+
+	public RestSqlAction(Settings settings, RestController restController) {
+        super(settings);
 		restController.registerHandler(RestRequest.Method.POST, "/_sql/_explain", this);
 		restController.registerHandler(RestRequest.Method.GET, "/_sql/_explain", this);
 		restController.registerHandler(RestRequest.Method.POST, "/_sql", this);
 		restController.registerHandler(RestRequest.Method.GET, "/_sql", this);
 	}
 
-	@Override
-	protected void handleRequest(RestRequest request, RestChannel channel, final Client client) throws Exception {
+    @Override
+    protected RestChannelConsumer prepareRequest(RestRequest request, NodeClient client) throws IOException {
+        String sql = request.param("sql");
 
-		String sql = request.param("sql");
+        if (sql == null) {
+            sql = request.content().utf8ToString();
+        }
+        try {
+        SearchDao searchDao = new SearchDao(client);
+        QueryAction queryAction= null;
 
-		if (sql == null) {
-			sql = request.content().toUtf8();
-		}
+            queryAction = searchDao.explain(sql);
 
-		SearchDao searchDao = new SearchDao(client);
-		ActionRequestBuilder actionRequestBuilder = searchDao.explain(sql);
-		ActionRequest actionRequest = actionRequestBuilder.request();
+        // TODO add unittests to explain. (rest level?)
+        if (request.path().endsWith("/_explain")) {
+            final String jsonExplanation = queryAction.explain().explain();
+            return channel -> channel.sendResponse(new BytesRestResponse(RestStatus.OK, jsonExplanation));
+        } else {
+            Map<String, String> params = request.params();
+            RestExecutor restExecutor = ActionRequestRestExecuterFactory.createExecutor(params.get("format"));
+            final QueryAction finalQueryAction = queryAction;
+            //doing this hack because elasticsearch throws exception for un-consumed props
+            Map<String,String> additionalParams = new HashMap<>();
+            List<String> additionalParamsNames = Arrays.asList("_type","_id","_score");
+            for(String paramName : additionalParamsNames) {
+                additionalParams.put(paramName, request.param(paramName));
+            }
+            return channel -> restExecutor.execute(client,additionalParams, finalQueryAction,channel);
+        }
+        } catch (SqlParseException e) {
+            e.printStackTrace();
+        } catch (SQLFeatureNotSupportedException e) {
+            e.printStackTrace();
+        }
+        return null;
 
-		// TODO add unittests to explain. (rest level?)
-		if (request.path().endsWith("/_explain")) {
-			String jsonExplanation = ExplainManager.explain(actionRequestBuilder);
-			BytesRestResponse bytesRestResponse = new BytesRestResponse(RestStatus.OK, jsonExplanation);
-			channel.sendResponse(bytesRestResponse);
-		} else {
-			new ActionRequestExecuter(actionRequest, channel, client).execute();
-		}
-	}
+    }
+
 }

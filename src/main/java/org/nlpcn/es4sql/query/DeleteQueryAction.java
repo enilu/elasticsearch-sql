@@ -1,17 +1,17 @@
 package org.nlpcn.es4sql.query;
 
 
-import org.elasticsearch.action.deletebyquery.DeleteByQueryRequestBuilder;
-import org.elasticsearch.action.search.SearchRequestBuilder;
+import org.elasticsearch.index.query.QueryBuilder;
 import org.elasticsearch.client.Client;
-import org.elasticsearch.index.query.BoolFilterBuilder;
-import org.elasticsearch.index.query.BoolQueryBuilder;
+
 import org.elasticsearch.index.query.QueryBuilders;
+import org.elasticsearch.index.reindex.DeleteByQueryAction;
+import org.elasticsearch.index.reindex.DeleteByQueryRequest;
+import org.elasticsearch.index.reindex.DeleteByQueryRequestBuilder;
 import org.nlpcn.es4sql.domain.Delete;
-import org.nlpcn.es4sql.domain.Select;
 import org.nlpcn.es4sql.domain.Where;
 import org.nlpcn.es4sql.exception.SqlParseException;
-import org.nlpcn.es4sql.query.maker.FilterMaker;
+
 import org.nlpcn.es4sql.query.maker.QueryMaker;
 
 public class DeleteQueryAction extends QueryAction {
@@ -25,13 +25,13 @@ public class DeleteQueryAction extends QueryAction {
 	}
 
 	@Override
-	public DeleteByQueryRequestBuilder explain() throws SqlParseException {
-		this.request = client.prepareDeleteByQuery();
-		request.setListenerThreaded(false);
+	public SqlElasticDeleteByQueryRequestBuilder explain() throws SqlParseException {
+		this.request = new DeleteByQueryRequestBuilder(client, DeleteByQueryAction.INSTANCE);
 
 		setIndicesAndTypes();
 		setWhere(delete.getWhere());
-		return request;
+        SqlElasticDeleteByQueryRequestBuilder deleteByQueryRequestBuilder = new SqlElasticDeleteByQueryRequestBuilder(request);
+		return deleteByQueryRequestBuilder;
 	}
 
 
@@ -39,12 +39,17 @@ public class DeleteQueryAction extends QueryAction {
 	 * Set indices and types to the delete by query request.
 	 */
 	private void setIndicesAndTypes() {
-		request.setIndices(query.getIndexArr());
 
-		String[] typeArr = query.getTypeArr();
-		if (typeArr != null) {
-			request.setTypes(typeArr);
-		}
+        DeleteByQueryRequest innerRequest = request.request();
+        innerRequest.indices(query.getIndexArr());
+        String[] typeArr = query.getTypeArr();
+        if (typeArr!=null){
+            innerRequest.getSearchRequest().types(typeArr);
+        }
+//		String[] typeArr = query.getTypeArr();
+//		if (typeArr != null) {
+//            request.set(typeArr);
+//		}
 	}
 
 
@@ -57,10 +62,10 @@ public class DeleteQueryAction extends QueryAction {
 	 */
 	private void setWhere(Where where) throws SqlParseException {
 		if (where != null) {
-			BoolFilterBuilder boolFilter = FilterMaker.explan(where);
-			request.setQuery(QueryBuilders.filteredQuery(null, boolFilter));
+			QueryBuilder whereQuery = QueryMaker.explan(where);
+			request.filter(whereQuery);
 		} else {
-			request.setQuery(QueryBuilders.matchAllQuery());
+			request.filter(QueryBuilders.matchAllQuery());
 		}
 	}
 

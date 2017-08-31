@@ -2,16 +2,18 @@ package org.nlpcn.es4sql.domain;
 
 import java.util.List;
 
+import com.alibaba.druid.sql.ast.SQLExpr;
+import com.alibaba.druid.sql.ast.expr.SQLCharExpr;
+import com.alibaba.druid.sql.ast.expr.SQLMethodInvokeExpr;
+import com.alibaba.druid.sql.ast.expr.SQLNumericLiteralExpr;
 import org.elasticsearch.common.xcontent.ToXContent;
+import org.elasticsearch.index.query.MatchPhraseQueryBuilder;
 import org.elasticsearch.index.query.MatchQueryBuilder;
 import org.elasticsearch.index.query.QueryStringQueryBuilder;
 import org.elasticsearch.index.query.WildcardQueryBuilder;
 import org.nlpcn.es4sql.exception.SqlParseException;
 
-import org.durid.sql.ast.SQLExpr;
-import org.durid.sql.ast.expr.SQLCharExpr;
-import org.durid.sql.ast.expr.SQLMethodInvokeExpr;
-import org.durid.sql.ast.expr.SQLNumericLiteralExpr;
+
 
 public class Paramer {
 	public String analysis;
@@ -35,7 +37,7 @@ public class Paramer {
 		return instance;
 	}
 
-	public static ToXContent fullParamer(QueryStringQueryBuilder query, Paramer paramer) {
+	public static ToXContent fullParamer(MatchPhraseQueryBuilder query, Paramer paramer) {
 		if (paramer.analysis != null) {
 			query.analyzer(paramer.analysis);
 		}
@@ -64,4 +66,14 @@ public class Paramer {
 		return query;
 	}
 
+    public static ToXContent fullParamer(QueryStringQueryBuilder query, Paramer paramer) {
+        if (paramer.analysis != null) {
+            query.analyzer(paramer.analysis);
+        }
+
+        if (paramer.boost != null) {
+            query.boost(paramer.boost);
+        }
+        return query;
+    }
 }
